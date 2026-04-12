@@ -1,0 +1,5 @@
+{
+  "_notes": "cooldown_hours: how far back to check for duplicate plays. check_interval_seconds: how often to poll Apple Music.",
+  "cooldown_hours": 24,
+  "check_interval_seconds": 30
+}
