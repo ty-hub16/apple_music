@@ -66,10 +66,10 @@ Reading Last Played data from Apple Music...
   [reader] Read 124 songs, 124 with Last Played dates.
   Done. Monitoring started.
 
-  SKIP  Savior  (played within 21d)
-  PLAY  On & On  — Joey Bada$$
-  SKIP  MÍA (feat. Drake)  (played within 21d)
-  PLAY  Like That  — Future, Metro Boomin & Kendrick Lamar
+  SKIP  Song Title  (played within 21d)
+  PLAY  Another Song  — Artist Name
+  SKIP  Song Title 2  (played within 21d)
+  PLAY  Song Title 3  — Artist Name 2
 ```
 
 Press `Ctrl+C` to stop.
