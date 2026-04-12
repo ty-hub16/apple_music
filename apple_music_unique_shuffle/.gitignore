@@ -1,0 +1,12 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment
+.env
+
+# Runtime output
+play_log.csv
+*.log
