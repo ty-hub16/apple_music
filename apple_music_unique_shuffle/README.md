@@ -25,6 +25,7 @@ A Windows script that skips songs you've already played recently while shuffling
 ```cmd
 python -m venv venv
 venv\Scripts\activate
+cd /apple_music_unique_shuffle
 pip install -r requirements.txt
 ```
 
