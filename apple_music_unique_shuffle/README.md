@@ -9,10 +9,10 @@ A Windows script that skips songs you've already played recently while shuffling
 
 ## How it works
 
-1. On startup, opens Apple Music, navigates to the **Songs** tab, and sorts by **Last Played** — reading the date from each song row via Windows UI Automation.
+1. On startup, opens Apple Music, navigates to the **Songs** tab, and reads the most recently played songs via Windows UI Automation — seeding a local `last_played_cache.csv` as a starting point.
 2. Every 10 seconds, reads the currently playing song from the Apple Music transport bar.
-3. If that song was played within the last `cooldown_days` days, it sends a **Next Track** media key to skip it automatically.
-4. Every hour it re-reads Last Played dates from the Apple Music UI to stay in sync across devices.
+3. If that song was played within the last `cooldown_days` days, it sends a **Next Track** media key to skip it automatically. Otherwise it logs the play to the CSV.
+4. Every hour it re-reads Last Played dates from the Apple Music UI and merges any newer dates into the CSV — catching plays from your other devices.
 
 ## Requirements
 
@@ -65,8 +65,8 @@ Apple Music Unique Shuffle
   Refresh  : every 60 min
   Press Ctrl+C to stop.
 
-Reading Last Played data from Apple Music...
-  [reader] Read 124 songs, 124 with Last Played dates.
+Seeding cache from Apple Music...
+  42 songs in cooldown window (42 seeded from UI).
   Done. Monitoring started.
 
   SKIP  Song Title  (played within 21d)
@@ -80,5 +80,6 @@ Press `Ctrl+C` to stop.
 ## Notes
 
 - Apple Music must be running (it will be un-minimized briefly on startup and each hourly refresh, then minimized again)
-- Last Played dates sync across Apple devices, but the sync can take up to an hour — hence the hourly refresh
+- Play history is saved to `last_played_cache.csv` (local only, not committed to git) so it persists across restarts
+- The hourly UI refresh catches plays from your iPhone/iPad — Last Played syncs across Apple devices, but can take up to an hour
 - The Songs tab must be visible in the sidebar; if it isn't, expand **Library** in the sidebar

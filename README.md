@@ -8,9 +8,10 @@ A collection of Apple Music automation tools.
 
 Skips songs you've already played recently while shuffling, so you actually hear new stuff.
 
-- Reads **Last Played** dates directly from the Apple Music UI
+- On startup, seeds play history from the Apple Music UI into a local CSV cache
+- Every play is logged to the CSV so history persists across restarts
 - Automatically skips any song played within the last X days
-- Refreshes play history every hour to stay in sync across devices
+- Refreshes every hour from the Apple Music UI to pick up plays from other devices
 - **Windows only** (requires the Apple Music Microsoft Store app + Python 3.10+)
 
 > **On an Apple device?** Use this Shortcut instead: [Apple Music Unique Shuffle](https://www.icloud.com/shortcuts/009acbd61de5401b8eb364f1a67e7308)
