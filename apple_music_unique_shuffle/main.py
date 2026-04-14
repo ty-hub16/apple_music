@@ -19,8 +19,10 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 from src.reader import refresh
 from src.player import get_current_track, skip_track
+from src import cache
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+CACHE_PATH = os.path.join(os.path.dirname(__file__), "last_played_cache.csv")
 
 
 def load_config() -> dict:
@@ -53,24 +55,41 @@ def main():
     print(f"  Refresh  : every {refresh_interval / 60:.0f} min")
     print("  Press Ctrl+C to stop.\n")
 
-    print("Reading Last Played data from Apple Music...")
-    songs_data = refresh()
-    last_refresh = time.monotonic()
+    print("Seeding cache from Apple Music...")
+    ui_data = refresh()
+    songs_data = cache.load(CACHE_PATH)
+    seeded = 0
+    for title, dt in ui_data.items():
+        if dt is not None and (title not in songs_data or dt > songs_data[title]):
+            songs_data[title] = dt
+            seeded += 1
+    songs_data = cache.prune(songs_data, cooldown_days)
+    cache.save(CACHE_PATH, songs_data)
+    print(f"  {len(songs_data)} songs in cooldown window ({seeded} seeded from UI).")
     print("  Done. Monitoring started.\n")
 
     last_track: tuple | None = None
     skip_count = 0
+    last_refresh = time.monotonic()
 
     while True:
         try:
-            # Periodic UI refresh
+            # Hourly UI refresh — picks up plays from other devices
             if time.monotonic() - last_refresh >= refresh_interval:
-                print(f"\n[{datetime.now().strftime('%H:%M')}] Refreshing Last Played data...")
+                print(f"\n[{datetime.now().strftime('%H:%M')}] Refreshing Last Played from Apple Music...")
                 try:
-                    songs_data = refresh()
+                    ui_data = refresh()
+                    merged = 0
+                    for title, dt in ui_data.items():
+                        if dt is not None and (title not in songs_data or dt > songs_data[title]):
+                            songs_data[title] = dt
+                            merged += 1
+                    songs_data = cache.prune(songs_data, cooldown_days)
+                    cache.save(CACHE_PATH, songs_data)
+                    print(f"  {merged} new/updated entries merged. {len(songs_data)} songs in cooldown window.")
                     last_refresh = time.monotonic()
                 except Exception as e:
-                    print(f"  Refresh failed: {e} — keeping previous data.")
+                    print(f"  Refresh failed: {e} — keeping existing cache.")
 
             track = get_current_track()
 
@@ -89,6 +108,9 @@ def main():
                     continue
 
                 print(f"  PLAY  {title}  — {artist}")
+                cache.update(songs_data, title)
+                songs_data = cache.prune(songs_data, cooldown_days)
+                cache.save(CACHE_PATH, songs_data)
                 last_track = track
 
             time.sleep(interval)

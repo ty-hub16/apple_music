@@ -1,5 +1,5 @@
 {
-  "_notes": "cooldown_days: songs played within this many days will be skipped. check_interval_seconds: how often to poll what is currently playing. refresh_interval_seconds: how often to re-read Last Played from Apple Music UI (3600 = 1 hour).",
+  "_notes": "cooldown_days: songs played within this many days will be skipped. check_interval_seconds: how often to poll what is currently playing. refresh_interval_seconds: how often to re-read Last Played from Apple Music UI to pick up plays from other devices (3600 = 1 hour).",
   "cooldown_days": 21,
   "check_interval_seconds": 10,
   "refresh_interval_seconds": 3600
