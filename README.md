@@ -1,5 +1,8 @@
 # apple_music
 
+**Skills Used:**
+Python, JSON parsing, CSV read/write, Windows UI Automation, Date/time parsing, Deduplication, Polling loop
+
 A collection of Apple Music automation tools.
 
 ---
