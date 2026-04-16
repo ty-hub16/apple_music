@@ -101,7 +101,9 @@ def main():
                     continue
 
                 if was_played_recently(title, songs_data, cooldown_days):
-                    print(f"  SKIP  {title}  (played within {cooldown_days}d)")
+                    last_played = songs_data.get(title.strip().lower())
+                    played_str = f"{last_played.month}/{last_played.day}/{last_played.year}" if last_played else "unknown"
+                    print(f"  SKIP  {title}  (played within {cooldown_days}d — last played {played_str})")
                     skip_track()
                     skip_count += 1
                     time.sleep(2)

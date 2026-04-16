@@ -11,3 +11,4 @@ __pycache__/
 play_log.csv
 last_played_cache.csv
 *.log
+*.txt
