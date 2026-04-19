@@ -168,6 +168,7 @@ def _parse_title(name: str) -> str:
     return re.sub(r'\s*Explicit\s*$', '', raw).strip()
 
 
+
 def _get_last_played_from_children(item) -> datetime | None:
     """Find the Last Played date from a ListItem's child TextControls.
 
@@ -240,3 +241,6 @@ def refresh(restore_after: bool = True) -> dict[str, datetime | None]:
     finally:
         if restore_after and was_minimized:
             _minimize_window(window)
+
+
+

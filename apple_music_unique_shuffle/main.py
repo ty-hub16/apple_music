@@ -31,6 +31,15 @@ def load_config() -> dict:
         return json.load(f)
 
 
+def _find_key_by_title(songs_data: dict, title: str) -> str | None:
+    """Return the first cache key matching this title, regardless of artist."""
+    prefix = title.strip().lower() + "|"
+    for key in songs_data:
+        if key.startswith(prefix):
+            return key
+    return None
+
+
 def was_played_recently(
     title: str,
     artist: str,
@@ -40,6 +49,10 @@ def was_played_recently(
     if cooldown_days <= 0:
         return False
     entry = songs_data.get(_make_key(title, artist))
+    if entry is None:
+        # Fall back to any entry for this title (e.g. seeded from UI without artist)
+        key = _find_key_by_title(songs_data, title)
+        entry = songs_data.get(key) if key else None
     if entry is None:
         return False
     return datetime.now() - entry["last_played"] < timedelta(days=cooldown_days)
@@ -62,9 +75,13 @@ def main():
     songs_data = cache.load(CACHE_PATH)
     seeded = 0
     for title, dt in ui_data.items():
-        key = _make_key(title, "")
-        if dt is not None and (key not in songs_data or dt > songs_data[key]["last_played"]):
-            songs_data[key] = {"last_played": dt, "artist": ""}
+        if dt is None:
+            continue
+        existing_key = _find_key_by_title(songs_data, title)
+        key = existing_key or _make_key(title, "")
+        if existing_key is None or dt > songs_data[key]["last_played"]:
+            artist = songs_data[key]["artist"] if existing_key else ""
+            songs_data[key] = {"last_played": dt, "artist": artist}
             seeded += 1
     songs_data = cache.prune(songs_data, cooldown_days)
     cache.save(CACHE_PATH, songs_data)
@@ -84,9 +101,13 @@ def main():
                     ui_data = refresh()
                     merged = 0
                     for title, dt in ui_data.items():
-                        key = _make_key(title, "")
-                        if dt is not None and (key not in songs_data or dt > songs_data[key]["last_played"]):
-                            songs_data[key] = {"last_played": dt, "artist": ""}
+                        if dt is None:
+                            continue
+                        existing_key = _find_key_by_title(songs_data, title)
+                        key = existing_key or _make_key(title, "")
+                        if existing_key is None or dt > songs_data[key]["last_played"]:
+                            artist = songs_data[key]["artist"] if existing_key else ""
+                            songs_data[key] = {"last_played": dt, "artist": artist}
                             merged += 1
                     songs_data = cache.prune(songs_data, cooldown_days)
                     cache.save(CACHE_PATH, songs_data)
