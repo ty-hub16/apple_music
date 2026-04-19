@@ -37,10 +37,10 @@ def was_played_recently(
 ) -> bool:
     if cooldown_days <= 0:
         return False
-    last_played = songs_data.get(title.strip().lower())
-    if last_played is None:
+    entry = songs_data.get(title.strip().lower())
+    if entry is None:
         return False
-    return datetime.now() - last_played < timedelta(days=cooldown_days)
+    return datetime.now() - entry["last_played"] < timedelta(days=cooldown_days)
 
 
 def main():
@@ -60,8 +60,8 @@ def main():
     songs_data = cache.load(CACHE_PATH)
     seeded = 0
     for title, dt in ui_data.items():
-        if dt is not None and (title not in songs_data or dt > songs_data[title]):
-            songs_data[title] = dt
+        if dt is not None and (title not in songs_data or dt > songs_data[title]["last_played"]):
+            songs_data[title] = {"last_played": dt, "artist": songs_data.get(title, {}).get("artist", "")}
             seeded += 1
     songs_data = cache.prune(songs_data, cooldown_days)
     cache.save(CACHE_PATH, songs_data)
@@ -81,8 +81,8 @@ def main():
                     ui_data = refresh()
                     merged = 0
                     for title, dt in ui_data.items():
-                        if dt is not None and (title not in songs_data or dt > songs_data[title]):
-                            songs_data[title] = dt
+                        if dt is not None and (title not in songs_data or dt > songs_data[title]["last_played"]):
+                            songs_data[title] = {"last_played": dt, "artist": songs_data.get(title, {}).get("artist", "")}
                             merged += 1
                     songs_data = cache.prune(songs_data, cooldown_days)
                     cache.save(CACHE_PATH, songs_data)
@@ -101,7 +101,8 @@ def main():
                     continue
 
                 if was_played_recently(title, songs_data, cooldown_days):
-                    last_played = songs_data.get(title.strip().lower())
+                    entry = songs_data.get(title.strip().lower())
+                    last_played = entry["last_played"] if entry else None
                     played_str = f"{last_played.month}/{last_played.day}/{last_played.year}" if last_played else "unknown"
                     print(f"  SKIP  {title}  (played within {cooldown_days}d — last played {played_str})")
                     skip_track()
@@ -110,7 +111,7 @@ def main():
                     continue
 
                 print(f"  PLAY  {title}  — {artist}")
-                cache.update(songs_data, title)
+                cache.update(songs_data, title, artist)
                 songs_data = cache.prune(songs_data, cooldown_days)
                 cache.save(CACHE_PATH, songs_data)
                 last_track = track
