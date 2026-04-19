@@ -126,7 +126,10 @@ def main():
                     continue
 
                 if was_played_recently(title, artist, songs_data, cooldown_days):
-                    entry = songs_data.get(_make_key(title, artist))
+                    key = _make_key(title, artist)
+                    if key not in songs_data:
+                        key = _find_key_by_title(songs_data, title) or key
+                    entry = songs_data.get(key)
                     last_played = entry["last_played"] if entry else None
                     played_str = f"{last_played.month}/{last_played.day}/{last_played.year}" if last_played else "unknown"
                     print(f"  SKIP  {title}  (played within {cooldown_days}d — last played {played_str})")
