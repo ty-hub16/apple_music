@@ -11,17 +11,24 @@ _FIELDNAMES = ["title", "artist", "last_played"]
 _DATE_FMT = "%Y-%m-%d %H:%M:%S"
 
 
+def _make_key(title: str, artist: str = "") -> str:
+    """Composite cache key: 'title|artist' lowercased."""
+    return f"{title.strip().lower()}|{artist.strip().lower()}"
+
+
 def load(path: str) -> dict[str, dict]:
-    """Load cache from CSV. Returns dict of lowercase title → {last_played, artist}."""
+    """Load cache from CSV. Returns dict of 'title|artist' → {last_played, artist}."""
     data: dict[str, dict] = {}
     if not os.path.exists(path):
         return data
     with open(path, encoding="utf-8", newline="") as f:
         for row in csv.DictReader(f):
             try:
-                data[row["title"]] = {
+                artist = row.get("artist", "")
+                key = _make_key(row["title"], artist)
+                data[key] = {
                     "last_played": datetime.strptime(row["last_played"], _DATE_FMT),
-                    "artist": row.get("artist", ""),
+                    "artist": artist,
                 }
             except (KeyError, ValueError):
                 continue
@@ -33,9 +40,11 @@ def save(path: str, data: dict[str, dict]) -> None:
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
         writer.writeheader()
-        for title, info in sorted(data.items(), key=lambda x: x[1]["last_played"], reverse=True):
+        for key, info in sorted(data.items(), key=lambda x: x[1]["last_played"], reverse=True):
+            # key is 'title|artist' — split back out for CSV columns
+            parts = key.split("|", 1)
             writer.writerow({
-                "title": title,
+                "title": parts[0],
                 "artist": info.get("artist", ""),
                 "last_played": info["last_played"].strftime(_DATE_FMT),
             })
@@ -49,4 +58,4 @@ def prune(data: dict[str, dict], cooldown_days: int) -> dict[str, dict]:
 
 def update(data: dict[str, dict], title: str, artist: str = "") -> None:
     """Record a play for title+artist with the current timestamp (in-place)."""
-    data[title.strip().lower()] = {"last_played": datetime.now(), "artist": artist}
+    data[_make_key(title, artist)] = {"last_played": datetime.now(), "artist": artist}
