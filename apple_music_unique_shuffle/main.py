@@ -74,14 +74,23 @@ def main():
     ui_data = refresh()
     songs_data = cache.load(CACHE_PATH)
     seeded = 0
-    for title, dt in ui_data.items():
+    for title, entry in ui_data.items():
+        dt = entry["last_played"]
+        ui_artist = entry["artist"]
         if dt is None:
             continue
         existing_key = _find_key_by_title(songs_data, title)
-        key = existing_key or _make_key(title, "")
-        if existing_key is None or dt > songs_data[key]["last_played"]:
-            artist = songs_data[key]["artist"] if existing_key else ""
-            songs_data[key] = {"last_played": dt, "artist": artist}
+        if existing_key:
+            cached = songs_data[existing_key]
+            best_artist = cached["artist"] or ui_artist
+            if dt > cached["last_played"]:
+                songs_data[existing_key] = {"last_played": dt, "artist": best_artist}
+                seeded += 1
+            elif best_artist != cached["artist"]:
+                songs_data[existing_key]["artist"] = best_artist
+        else:
+            key = _make_key(title, ui_artist)
+            songs_data[key] = {"last_played": dt, "artist": ui_artist}
             seeded += 1
     songs_data = cache.prune(songs_data, cooldown_days)
     cache.save(CACHE_PATH, songs_data)
@@ -100,14 +109,23 @@ def main():
                 try:
                     ui_data = refresh()
                     merged = 0
-                    for title, dt in ui_data.items():
+                    for title, entry in ui_data.items():
+                        dt = entry["last_played"]
+                        ui_artist = entry["artist"]
                         if dt is None:
                             continue
                         existing_key = _find_key_by_title(songs_data, title)
-                        key = existing_key or _make_key(title, "")
-                        if existing_key is None or dt > songs_data[key]["last_played"]:
-                            artist = songs_data[key]["artist"] if existing_key else ""
-                            songs_data[key] = {"last_played": dt, "artist": artist}
+                        if existing_key:
+                            cached = songs_data[existing_key]
+                            best_artist = cached["artist"] or ui_artist
+                            if dt > cached["last_played"]:
+                                songs_data[existing_key] = {"last_played": dt, "artist": best_artist}
+                                merged += 1
+                            elif best_artist != cached["artist"]:
+                                songs_data[existing_key]["artist"] = best_artist
+                        else:
+                            key = _make_key(title, ui_artist)
+                            songs_data[key] = {"last_played": dt, "artist": ui_artist}
                             merged += 1
                     songs_data = cache.prune(songs_data, cooldown_days)
                     cache.save(CACHE_PATH, songs_data)

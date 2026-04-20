@@ -168,6 +168,29 @@ def _parse_title(name: str) -> str:
     return re.sub(r'\s*Explicit\s*$', '', raw).strip()
 
 
+def _get_artist_from_children(item) -> str:
+    """Read the artist name from a ListItem's child TextControls.
+
+    Skips the title (index 0) and any node that looks like a duration (M:SS),
+    then returns the first remaining non-empty text node which is the artist.
+    """
+    try:
+        for group in item.GetChildren():
+            text_nodes = []
+            try:
+                for child in group.GetChildren():
+                    if child.ControlTypeName == "TextControl":
+                        text_nodes.append(child.Name or "")
+            except Exception:
+                continue
+            for node in text_nodes[1:]:
+                node = node.strip()
+                if node and not re.match(r'^\d{1,2}:\d{2}$', node):
+                    return node
+    except Exception:
+        pass
+    return ""
+
 
 def _get_last_played_from_children(item) -> datetime | None:
     """Find the Last Played date from a ListItem's child TextControls.
@@ -195,13 +218,12 @@ def _get_last_played_from_children(item) -> datetime | None:
     return None
 
 
-def refresh(restore_after: bool = True) -> dict[str, datetime | None]:
+def refresh(restore_after: bool = True) -> dict[str, dict]:
     """
     Open Apple Music, navigate to Songs, sort by Last Played (descending),
     and read every song row.
 
-    Returns a dict mapping lowercase title → last_played datetime (or None if
-    the date wasn't readable from the UI).
+    Returns a dict mapping lowercase title → {"last_played": datetime | None, "artist": str}.
 
     If restore_after is True and the window was minimized before the refresh,
     it will be minimized again afterwards.
@@ -219,7 +241,7 @@ def refresh(restore_after: bool = True) -> dict[str, datetime | None]:
         if not songs_list:
             raise RuntimeError("Could not locate the Songs list control after navigation.")
 
-        data: dict[str, datetime | None] = {}
+        data: dict[str, dict] = {}
         items = [
             c for c in songs_list.GetChildren()
             if c.ControlTypeName == "ListItemControl"
@@ -231,9 +253,10 @@ def refresh(restore_after: bool = True) -> dict[str, datetime | None]:
             if not title:
                 continue
             last_played = _get_last_played_from_children(item)
+            artist = _get_artist_from_children(item)
             if last_played:
                 dates_found += 1
-            data[title.lower()] = last_played
+            data[title.lower()] = {"last_played": last_played, "artist": artist}
 
         print(f"  [reader] Read {len(data)} songs, {dates_found} with Last Played dates.")
         return data
