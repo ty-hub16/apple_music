@@ -57,25 +57,64 @@ Open Apple Music and start shuffling, then run:
 venv\Scripts\python.exe main.py
 ```
 
-Output example:
+### Commands
+
+While monitoring is active, you can type commands and press Enter:
+
+| Command | Effect |
+|---|---|
+| `p` or `pause` | Pause skip mode — songs will not be cached until resumed |
+| `r`, `resume`, or `start` | Resume skip mode and caching |
+| `chat` | Enter interactive AI chat mode to ask about your music history |
+
+### Output example
 ```
 Apple Music Unique Shuffle
   Cooldown : 21 day(s)
   Poll     : every 10s
   Refresh  : every 60 min
+  Commands: 'p'/'pause' to pause, 'r'/'resume'/'start' to resume, 'chat' for AI chat
   Press Ctrl+C to stop.
 
 Seeding cache from Apple Music...
   42 songs in cooldown window (42 seeded from UI).
   Done. Monitoring started.
 
-  SKIP  Song Title  (played within 21d)
+  SKIP  Song Title  (played within 21d — last played 05/28/2026)
   PLAY  Another Song  — Artist Name
-  SKIP  Song Title 2  (played within 21d)
-  PLAY  Song Title 3  — Artist Name 2
+  [⏸ PAUSED] SKIP  Song Title 2  (played within 21d — last played 05/28/2026)
+  [⏸ PAUSED] PLAY  Song Title 3  — Artist Name 2
+  ▶ PAUSE MODE OFF — resuming cache
 ```
 
 Press `Ctrl+C` to stop.
+
+## Features
+
+### Pause Mode
+Temporarily pause skip functionality to deliberately play recently heard songs. While paused:
+- Skipped songs are **not** cached
+- Normal skips still appear in logs (with `[⏸ PAUSED]` indicator)
+- Resume with `r`, `resume`, or `start`
+
+Example use case: You want to replay a song you heard in the last few days, but the automation would normally skip it. Type `p` or `pause`, play your song, then type `resume` when done.
+
+### AI Chat Mode
+Ask questions about your music listening history. Type `chat` to enter interactive mode.
+
+Example queries:
+- "Show me songs from [artist]"
+- "What artists did I play today?"
+- "What are my listening patterns?"
+- "Top artists this week?"
+
+**Setup:** Install one of the optional LLM packages:
+```cmd
+pip install anthropic        # Uses your Claude subscription (recommended)
+pip install openai           # Uses OpenAI free tier (alternative)
+```
+
+The chat feature tries Claude first, then falls back to OpenAI if unavailable. Exit chat mode by typing `exit`, `q`, or `quit`.
 
 ## Notes
 

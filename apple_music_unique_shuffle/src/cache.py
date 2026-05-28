@@ -8,7 +8,8 @@ import os
 from datetime import datetime, timedelta
 
 _FIELDNAMES = ["title", "artist", "last_played"]
-_DATE_FMT = "%Y-%m-%d %H:%M:%S"
+_DATE_FMT_LOAD = "%Y-%m-%d %H:%M:%S"  # Old format for backwards compatibility
+_DATE_FMT_SAVE = "%m/%d/%Y"  # New format matching main.py display
 
 
 def _make_key(title: str, artist: str = "") -> str:
@@ -26,8 +27,20 @@ def load(path: str) -> dict[str, dict]:
             try:
                 artist = row.get("artist", "")
                 key = _make_key(row["title"], artist)
+                date_str = row["last_played"]
+                
+                # Try old format first, then new format
+                dt = None
+                try:
+                    dt = datetime.strptime(date_str, _DATE_FMT_LOAD)
+                except ValueError:
+                    try:
+                        dt = datetime.strptime(date_str, _DATE_FMT_SAVE)
+                    except ValueError:
+                        continue
+                
                 data[key] = {
-                    "last_played": datetime.strptime(row["last_played"], _DATE_FMT),
+                    "last_played": dt,
                     "artist": artist,
                 }
             except (KeyError, ValueError):
@@ -46,7 +59,7 @@ def save(path: str, data: dict[str, dict]) -> None:
             writer.writerow({
                 "title": parts[0],
                 "artist": info.get("artist", ""),
-                "last_played": info["last_played"].strftime(_DATE_FMT),
+                "last_played": info["last_played"].strftime(_DATE_FMT_SAVE),
             })
 
 
