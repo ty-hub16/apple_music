@@ -251,8 +251,8 @@ def main():
                         stop_event.set()
                         break
 
-            # Hourly UI refresh — picks up plays from other devices
-            if time.monotonic() - last_refresh >= refresh_interval:
+            # Hourly UI refresh — picks up plays from other devices (skip if paused)
+            if not pause_mode and time.monotonic() - last_refresh >= refresh_interval:
                 print(f"\n{_get_status_prefix(pause_mode)}[{datetime.now().strftime('%H:%M')}] Refreshing Last Played from Apple Music...")
                 try:
                     ui_data = refresh()
@@ -281,6 +281,9 @@ def main():
                     last_refresh = time.monotonic()
                 except Exception as e:
                     print(f"  Refresh failed: {e} — keeping existing cache.")
+            elif pause_mode and time.monotonic() - last_refresh >= refresh_interval:
+                # Reset refresh timer even when paused so it doesn't try to refresh again immediately when resumed
+                last_refresh = time.monotonic()
 
             track = get_current_track()
 

@@ -48,12 +48,23 @@ def _find_window() -> auto.WindowControl | None:
 def _restore_window(window) -> bool:
     """Maximize window and bring to foreground. Returns True if it was minimized."""
     SW_MAXIMIZE = 3
+    SW_SHOW = 5
     try:
         hwnd = window.NativeWindowHandle
         was_minimized = bool(ctypes.windll.user32.IsIconic(hwnd))
+        
+        # Multiple aggressive steps to bring window to foreground
         ctypes.windll.user32.ShowWindow(hwnd, SW_MAXIMIZE)
         ctypes.windll.user32.SetForegroundWindow(hwnd)
-        time.sleep(1.0)
+        ctypes.windll.user32.ShowWindow(hwnd, SW_SHOW)
+        
+        # Additional activation attempts
+        try:
+            ctypes.windll.user32.SetActiveWindow(hwnd)
+        except Exception:
+            pass
+        
+        time.sleep(2.0)  # Wait longer to ensure UI renders
         return was_minimized
     except Exception:
         return False
@@ -83,14 +94,21 @@ def _navigate_to_songs(window) -> None:
             pass
         return None
 
-    item = find_songs_item(window)
-    if not item:
-        raise RuntimeError("Could not find 'Songs' nav item — is the sidebar visible?")
-    try:
-        item.GetInvokePattern().Invoke()
-    except Exception:
-        item.Click()
-    time.sleep(2.0)
+    # Retry logic: Apple Music UI takes time to load after restore
+    max_retries = 5
+    for attempt in range(max_retries):
+        item = find_songs_item(window)
+        if item:
+            try:
+                item.GetInvokePattern().Invoke()
+            except Exception:
+                item.Click()
+            time.sleep(2.0)
+            return
+        if attempt < max_retries - 1:
+            time.sleep(1.5)  # Wait before retrying
+
+    raise RuntimeError("Could not find 'Songs' nav item — is the sidebar visible? Tried 5 times.")
 
 
 def _sort_by_last_played(window) -> None:
@@ -233,6 +251,7 @@ def refresh(restore_after: bool = True) -> dict[str, dict]:
         raise RuntimeError("Apple Music window not found. Is the app running?")
 
     was_minimized = _restore_window(window)
+    time.sleep(1.0)  # Give Apple Music UI time to fully load after restore
     try:
         _navigate_to_songs(window)
         _sort_by_last_played(window)
