@@ -301,17 +301,16 @@ def main():
                     entry = songs_data.get(key)
                     last_played = entry["last_played"] if entry else None
                     played_str = f"{last_played.month}/{last_played.day}/{last_played.year}" if last_played else "unknown"
-                    status = _get_status_prefix(pause_mode)
-                    print(f"  {status}SKIP  {title}  (played within {cooldown_days}d — last played {played_str})")
+                    if not pause_mode:
+                        print(f"  SKIP  {title}  (played within {cooldown_days}d — last played {played_str})")
                     skip_track()
                     skip_count += 1
                     time.sleep(2)
                     continue
 
                 # Only cache if not in pause mode
-                status = _get_status_prefix(pause_mode)
-                print(f"  {status}PLAY  {title}  — {artist}")
                 if not pause_mode:
+                    print(f"  PLAY  {title}  — {artist}")
                     cache.update(songs_data, title, artist)
                     songs_data = cache.prune(songs_data, cooldown_days)
                     cache.save(CACHE_PATH, songs_data)
