@@ -7,10 +7,11 @@ Usage:
     python main.py
 
 Commands:
-    p/pause  - Pause skip mode (songs won't be cached)
-    r/resume/start - Resume skip mode
-    chat     - Enter interactive chat about your music
-    q/quit   - Exit
+    p/pause        - Pause skip mode (songs won't be cached)
+    resume/start   - Resume skip mode
+    r/refresh      - Instantly re-seed the cache from Apple Music
+    chat           - Enter interactive chat about your music
+    q/quit         - Exit
 
 Press Ctrl+C to stop.
 """
@@ -21,7 +22,7 @@ import sys
 import time
 import threading
 from datetime import datetime, timedelta
-from queue import Queue
+from queue import Queue, Empty
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
@@ -49,10 +50,13 @@ def _try_claude_api(messages: list) -> str | None:
     try:
         import anthropic
         client = anthropic.Anthropic()
+        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        turns = [m for m in messages if m["role"] != "system"]
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-5",
             max_tokens=1024,
-            messages=messages,
+            system=system,
+            messages=turns,
         )
         return response.content[0].text
     except Exception:
@@ -74,12 +78,62 @@ def _try_openai_api(messages: list) -> str | None:
         return None
 
 
+def _try_gemini_api(messages: list) -> str | None:
+    """Try to call the Gemini API (free tier). Returns response or None if unavailable."""
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client()
+        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        user_content = next((m["content"] for m in messages if m["role"] == "user"), "")
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=user_content,
+            config=types.GenerateContentConfig(system_instruction=system),
+        )
+        return response.text
+    except Exception:
+        return None
+
+
+def _try_ollama_api(messages: list) -> str | None:
+    """Try to call a local Ollama server. Returns response or None if unavailable."""
+    try:
+        import urllib.request
+
+        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        user_content = next((m["content"] for m in messages if m["role"] == "user"), "")
+        prompt = f"{system}\n\n{user_content}" if system else user_content
+        payload = json.dumps({
+            "model": "llama3.2",
+            "prompt": prompt,
+            "stream": False,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "http://localhost:11434/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data.get("response")
+    except Exception:
+        return None
+
+
 def _call_llm(messages: list) -> str | None:
-    """Call Claude first, fall back to OpenAI."""
+    """Call Claude first, then OpenAI, then Gemini, then a local Ollama server."""
     response = _try_claude_api(messages)
     if response:
         return response
-    return _try_openai_api(messages)
+    response = _try_openai_api(messages)
+    if response:
+        return response
+    response = _try_gemini_api(messages)
+    if response:
+        return response
+    return _try_ollama_api(messages)
 
 
 def _format_music_history(songs_data: dict, limit: int = 20) -> str:
@@ -104,7 +158,7 @@ def _input_listener(command_queue: Queue, stop_event: threading.Event) -> None:
     """Listen for user input in a separate thread."""
     while not stop_event.is_set():
         try:
-            user_input = input().strip().lower()
+            user_input = input().strip()
             if user_input:
                 command_queue.put(user_input)
         except EOFError:
@@ -113,7 +167,7 @@ def _input_listener(command_queue: Queue, stop_event: threading.Event) -> None:
             pass
 
 
-def _chat_mode(songs_data: dict, pause_mode: bool) -> bool:
+def _chat_mode(songs_data: dict, pause_mode: bool, command_queue: Queue) -> bool:
     """Interactive chat mode. Returns True to resume monitoring, False to quit."""
     print("\n[CHAT MODE]")
     print("Ask questions about your music history (type 'exit' to return to monitoring):")
@@ -121,14 +175,25 @@ def _chat_mode(songs_data: dict, pause_mode: bool) -> bool:
     print(f"  - 'top artists this week'")
     print(f"  - 'songs played today'")
     print(f"  - 'listening patterns'")
-    
+
     music_context = _format_music_history(songs_data)
-    
+
     while True:
         try:
-            user_query = input("You: ").strip()
+            print("You: ", end="", flush=True)
+            # Read from the shared command_queue (filled by the background
+            # _input_listener thread) instead of calling input() directly —
+            # calling input() here too would race with that thread for stdin,
+            # requiring the user to type each line twice.
+            user_query = None
+            while user_query is None:
+                try:
+                    user_query = command_queue.get(timeout=0.2).strip()
+                except Empty:
+                    continue
             if not user_query:
                 continue
+            print(user_query)
             if user_query.lower() in ["exit", "q", "quit"]:
                 print("[Returning to monitoring...]\n")
                 return True
@@ -146,13 +211,43 @@ def _chat_mode(songs_data: dict, pause_mode: bool) -> bool:
             if response:
                 print(f"Assistant: {response}\n")
             else:
-                print("Assistant: (Unable to connect to AI service. Install 'anthropic' or 'openai' package.)\n")
+                print("Assistant: (Unable to connect to AI service. Install 'anthropic', 'openai', 'google-genai', or run Ollama locally.)\n")
         
         except KeyboardInterrupt:
             print("\n[Returning to monitoring...]\n")
             return True
         except Exception as e:
             print(f"Error: {e}\n")
+
+def _refresh_and_merge(songs_data: dict, cooldown_days: int) -> tuple[dict, int]:
+    """Pull Last Played data from the Apple Music UI and merge it into songs_data.
+
+    Returns the (possibly pruned) songs_data dict and the number of new/updated entries.
+    """
+    ui_data = refresh()
+    merged = 0
+    for title, entry in ui_data.items():
+        dt = entry["last_played"]
+        ui_artist = entry["artist"]
+        if dt is None:
+            continue
+        existing_key = _find_key_by_title(songs_data, title)
+        if existing_key:
+            cached = songs_data[existing_key]
+            best_artist = cached["artist"] or ui_artist
+            if dt > cached["last_played"]:
+                songs_data[existing_key] = {"last_played": dt, "artist": best_artist}
+                merged += 1
+            elif best_artist != cached["artist"]:
+                songs_data[existing_key]["artist"] = best_artist
+        else:
+            key = _make_key(title, ui_artist)
+            songs_data[key] = {"last_played": dt, "artist": ui_artist}
+            merged += 1
+    songs_data = cache.prune(songs_data, cooldown_days)
+    cache.save(CACHE_PATH, songs_data)
+    return songs_data, merged
+
 
 def _find_key_by_title(songs_data: dict, title: str) -> str | None:
     """Return the first cache key matching this title, regardless of artist."""
@@ -191,7 +286,7 @@ def main():
     print(f"  Cooldown : {cooldown_days} day(s)")
     print(f"  Poll     : every {interval}s")
     print(f"  Refresh  : every {refresh_interval / 60:.0f} min")
-    print("  Commands: 'p'/'pause' to pause, 'r'/'resume'/'start' to resume, 'chat' for AI chat")
+    print("  Commands: 'p'/'pause' to pause, 'resume'/'start' to resume, 'r'/'refresh' to re-seed now, 'chat' for AI chat")
     print("  Press Ctrl+C to stop.\n")
 
     # Setup input listener thread
@@ -201,29 +296,8 @@ def main():
     input_thread.start()
 
     print("Seeding cache from Apple Music...")
-    ui_data = refresh()
     songs_data = cache.load(CACHE_PATH)
-    seeded = 0
-    for title, entry in ui_data.items():
-        dt = entry["last_played"]
-        ui_artist = entry["artist"]
-        if dt is None:
-            continue
-        existing_key = _find_key_by_title(songs_data, title)
-        if existing_key:
-            cached = songs_data[existing_key]
-            best_artist = cached["artist"] or ui_artist
-            if dt > cached["last_played"]:
-                songs_data[existing_key] = {"last_played": dt, "artist": best_artist}
-                seeded += 1
-            elif best_artist != cached["artist"]:
-                songs_data[existing_key]["artist"] = best_artist
-        else:
-            key = _make_key(title, ui_artist)
-            songs_data[key] = {"last_played": dt, "artist": ui_artist}
-            seeded += 1
-    songs_data = cache.prune(songs_data, cooldown_days)
-    cache.save(CACHE_PATH, songs_data)
+    songs_data, seeded = _refresh_and_merge(songs_data, cooldown_days)
     print(f"  {len(songs_data)} songs in cooldown window ({seeded} seeded from UI).")
     print("  Done. Monitoring started.\n")
 
@@ -236,16 +310,24 @@ def main():
         try:
             # Check for user commands
             while not command_queue.empty():
-                cmd = command_queue.get()
+                cmd = command_queue.get().lower()
                 if cmd in ["p", "pause"]:
                     pause_mode = True
                     print(f"\n{_get_status_prefix(pause_mode)}⏸ PAUSE MODE ON — songs will not be cached")
-                    print(f"{_get_status_prefix(pause_mode)}(type 'r', 'resume', or 'start' to resume)\n")
-                elif cmd in ["r", "resume", "start"]:
+                    print(f"{_get_status_prefix(pause_mode)}(type 'resume' or 'start' to resume)\n")
+                elif cmd in ["resume", "start"]:
                     pause_mode = False
                     print(f"\n▶ PAUSE MODE OFF — resuming cache\n")
+                elif cmd in ["r", "refresh"]:
+                    print(f"\n{_get_status_prefix(pause_mode)}[{datetime.now().strftime('%H:%M')}] Refreshing Last Played from Apple Music...")
+                    try:
+                        songs_data, merged = _refresh_and_merge(songs_data, cooldown_days)
+                        print(f"  {merged} new/updated entries merged. {len(songs_data)} songs in cooldown window.\n")
+                        last_refresh = time.monotonic()
+                    except Exception as e:
+                        print(f"  Refresh failed: {e} — keeping existing cache.\n")
                 elif cmd == "chat":
-                    if _chat_mode(songs_data, pause_mode):
+                    if _chat_mode(songs_data, pause_mode, command_queue):
                         continue
                     else:
                         stop_event.set()
@@ -255,28 +337,7 @@ def main():
             if not pause_mode and time.monotonic() - last_refresh >= refresh_interval:
                 print(f"\n{_get_status_prefix(pause_mode)}[{datetime.now().strftime('%H:%M')}] Refreshing Last Played from Apple Music...")
                 try:
-                    ui_data = refresh()
-                    merged = 0
-                    for title, entry in ui_data.items():
-                        dt = entry["last_played"]
-                        ui_artist = entry["artist"]
-                        if dt is None:
-                            continue
-                        existing_key = _find_key_by_title(songs_data, title)
-                        if existing_key:
-                            cached = songs_data[existing_key]
-                            best_artist = cached["artist"] or ui_artist
-                            if dt > cached["last_played"]:
-                                songs_data[existing_key] = {"last_played": dt, "artist": best_artist}
-                                merged += 1
-                            elif best_artist != cached["artist"]:
-                                songs_data[existing_key]["artist"] = best_artist
-                        else:
-                            key = _make_key(title, ui_artist)
-                            songs_data[key] = {"last_played": dt, "artist": ui_artist}
-                            merged += 1
-                    songs_data = cache.prune(songs_data, cooldown_days)
-                    cache.save(CACHE_PATH, songs_data)
+                    songs_data, merged = _refresh_and_merge(songs_data, cooldown_days)
                     print(f"  {merged} new/updated entries merged. {len(songs_data)} songs in cooldown window.")
                     last_refresh = time.monotonic()
                 except Exception as e:

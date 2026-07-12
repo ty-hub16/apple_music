@@ -38,10 +38,18 @@ def _child_count(ctrl) -> int:
 
 
 def _find_window() -> auto.WindowControl | None:
+    print("    [DEBUG] Getting root control...")
     desktop = auto.GetRootControl()
-    for window in desktop.GetChildren():
-        if "music" in (window.Name or "").lower():
+    print(f"    [DEBUG] Got root control, checking children...")
+    children = desktop.GetChildren()
+    print(f"    [DEBUG] Found {len(children)} top-level windows")
+    for i, window in enumerate(children):
+        window_name = window.Name or ""
+        print(f"    [DEBUG]   Window {i}: {window_name}")
+        if "music" in window_name.lower():
+            print(f"    [DEBUG] Found Music window: {window_name}")
             return window
+    print("    [DEBUG] No Music window found")
     return None
 
 
@@ -97,6 +105,7 @@ def _navigate_to_songs(window) -> None:
     # Retry logic: Apple Music UI takes time to load after restore
     max_retries = 5
     for attempt in range(max_retries):
+        print(f"    [DEBUG] Looking for Songs item (attempt {attempt+1}/{max_retries})...")
         item = find_songs_item(window)
         if item:
             try:
@@ -109,6 +118,27 @@ def _navigate_to_songs(window) -> None:
             time.sleep(1.5)  # Wait before retrying
 
     raise RuntimeError("Could not find 'Songs' nav item — is the sidebar visible? Tried 5 times.")
+
+
+def _sample_top_dates(window, count: int = 5) -> list[datetime]:
+    """Read the Last Played dates off the first few currently visible rows."""
+    songs_list = _find_songs_list(window)
+    if not songs_list:
+        return []
+    try:
+        items = [c for c in songs_list.GetChildren() if c.ControlTypeName == "ListItemControl"]
+    except Exception:
+        return []
+    dates = []
+    for item in items[:count]:
+        dt = _get_last_played_from_children(item)
+        if dt:
+            dates.append(dt)
+    return dates
+
+
+def _is_sorted_descending(dates: list[datetime]) -> bool:
+    return len(dates) >= 2 and all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1))
 
 
 def _sort_by_last_played(window) -> None:
@@ -131,13 +161,34 @@ def _sort_by_last_played(window) -> None:
     if not header:
         raise RuntimeError("Could not find 'Last Played' column header")
 
-    # Click twice: first click may set ascending, second sets descending
-    for _ in range(2):
+    # Rather than trying to read the sort-arrow icon (which Apple Music may
+    # expose with no distinguishing accessible name/text — e.g. the same
+    # glyph just rotated 180°), click and then check the *actual* row order:
+    # read the Last Played dates of the first few visible rows and confirm
+    # they're descending. This verifies the real thing we care about instead
+    # of guessing at how the arrow is represented in the automation tree.
+    max_clicks = 4
+    for attempt in range(1, max_clicks + 1):
         try:
             header.GetInvokePattern().Invoke()
         except Exception:
             header.Click()
-        time.sleep(0.5)
+        time.sleep(0.6)
+
+        dates = _sample_top_dates(window)
+        descending = _is_sorted_descending(dates)
+        print(
+            f"    [DEBUG] Last Played sort after click {attempt}: "
+            f"{'descending' if descending else 'not confirmed'} "
+            f"(sampled {len(dates)} date(s): {[d.strftime('%m/%d %H:%M') for d in dates]})"
+        )
+        if descending:
+            return
+
+    print(
+        f"    [DEBUG] Warning: could not confirm 'Last Played' is sorted descending "
+        f"after {max_clicks} clicks; proceeding with current order."
+    )
 
 
 def _find_songs_list(window):
@@ -246,16 +297,21 @@ def refresh(restore_after: bool = True) -> dict[str, dict]:
     If restore_after is True and the window was minimized before the refresh,
     it will be minimized again afterwards.
     """
+    print("  [DEBUG] Finding Apple Music window...")
     window = _find_window()
     if not window:
         raise RuntimeError("Apple Music window not found. Is the app running?")
 
+    print("  [DEBUG] Window found. Restoring...")
     was_minimized = _restore_window(window)
     time.sleep(1.0)  # Give Apple Music UI time to fully load after restore
     try:
+        print("  [DEBUG] Navigating to Songs tab...")
         _navigate_to_songs(window)
+        print("  [DEBUG] Sorting by Last Played...")
         _sort_by_last_played(window)
 
+        print("  [DEBUG] Finding songs list...")
         songs_list = _find_songs_list(window)
         if not songs_list:
             raise RuntimeError("Could not locate the Songs list control after navigation.")

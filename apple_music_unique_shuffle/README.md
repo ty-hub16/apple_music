@@ -112,9 +112,14 @@ Example queries:
 ```cmd
 pip install anthropic        # Uses your Claude subscription (recommended)
 pip install openai           # Uses OpenAI free tier (alternative)
+pip install google-genai     # Uses Gemini's free tier (alternative, no billing needed)
 ```
 
-The chat feature tries Claude first, then falls back to OpenAI if unavailable. Exit chat mode by typing `exit`, `q`, or `quit`.
+Set the corresponding API key as an environment variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`). The chat feature tries Claude first, then OpenAI, then Gemini.
+
+**No API key at all?** Install [Ollama](https://ollama.com), run `ollama pull llama3.2`, and leave it running (`ollama serve` or the desktop app) — the chat feature falls back to it automatically over `localhost:11434` if none of the cloud APIs are available. No package install or account needed.
+
+Exit chat mode by typing `exit`, `q`, or `quit`.
 
 ## Notes
 
