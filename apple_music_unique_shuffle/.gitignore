@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 *.pyo
 
+# Local launcher (hardcodes this machine's paths)
+run.bat
+
 # Environment
 .env
 

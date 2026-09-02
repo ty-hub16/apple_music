@@ -237,11 +237,14 @@ def _parse_title(name: str) -> str:
     return re.sub(r'\s*Explicit\s*$', '', raw).strip()
 
 
-def _get_artist_from_children(item) -> str:
-    """Read the artist name from a ListItem's child TextControls.
+def _get_text_nodes(item) -> list[str]:
+    """Collect TextControl Names from the first non-empty child GroupControl.
 
-    Skips the title (index 0) and any node that looks like a duration (M:SS),
-    then returns the first remaining non-empty text node which is the artist.
+    Row structure: ListItem > GroupControl > [title, ..., duration, artist, album, ...].
+    Reading these structured nodes is far more reliable than regexing the
+    ListItem's flattened Name string, which for many rows doesn't contain a
+    duration marker in the expected place and ends up dumping title+artist+
+    album+genre+play count into a single garbled string.
     """
     try:
         for group in item.GetChildren():
@@ -249,15 +252,34 @@ def _get_artist_from_children(item) -> str:
             try:
                 for child in group.GetChildren():
                     if child.ControlTypeName == "TextControl":
-                        text_nodes.append(child.Name or "")
+                        text_nodes.append((child.Name or "").strip())
             except Exception:
                 continue
-            for node in text_nodes[1:]:
-                node = node.strip()
-                if node and not re.match(r'^\d{1,2}:\d{2}$', node):
-                    return node
+            if text_nodes:
+                return text_nodes
     except Exception:
         pass
+    return []
+
+
+def _get_title_from_children(item, text_nodes: list[str] | None = None) -> str:
+    """Read the title from a ListItem's first child TextControl."""
+    nodes = text_nodes if text_nodes is not None else _get_text_nodes(item)
+    if not nodes:
+        return ""
+    return re.sub(r'\s*Explicit\s*$', '', nodes[0]).strip()
+
+
+def _get_artist_from_children(item, text_nodes: list[str] | None = None) -> str:
+    """Read the artist name from a ListItem's child TextControls.
+
+    Skips the title (index 0) and any node that looks like a duration (M:SS),
+    then returns the first remaining non-empty text node which is the artist.
+    """
+    nodes = text_nodes if text_nodes is not None else _get_text_nodes(item)
+    for node in nodes[1:]:
+        if node and not re.match(r'^\d{1,2}:\d{2}$', node):
+            return node
     return ""
 
 
@@ -324,11 +346,12 @@ def refresh(restore_after: bool = True) -> dict[str, dict]:
 
         dates_found = 0
         for item in items:
-            title = _parse_title(item.Name or "")
+            text_nodes = _get_text_nodes(item)
+            title = _get_title_from_children(item, text_nodes) or _parse_title(item.Name or "")
             if not title:
                 continue
             last_played = _get_last_played_from_children(item)
-            artist = _get_artist_from_children(item)
+            artist = _get_artist_from_children(item, text_nodes)
             if last_played:
                 dates_found += 1
             data[title.lower()] = {"last_played": last_played, "artist": artist}

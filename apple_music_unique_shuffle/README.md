@@ -23,10 +23,9 @@ A Windows script that skips songs you've already played recently while shuffling
 ## Setup
 
 ```cmd
+cd apple_music_unique_shuffle
 python -m venv venv
-:: Activate the venv created above
 venv\Scripts\activate
-cd /apple_music_unique_shuffle
 pip install -r requirements.txt
 ```
 
@@ -36,7 +35,7 @@ Edit `config.json`:
 
 ```json
 {
-  "cooldown_days": 21,
+  "cooldown_days": 30,
   "check_interval_seconds": 10,
   "refresh_interval_seconds": 3600
 }
@@ -53,9 +52,26 @@ Edit `config.json`:
 Open Apple Music and start shuffling, then run:
 
 ```cmd
-:: Using venv\Scripts\ from the venv created in Setup above
-venv\Scripts\python.exe main.py
+venv\Scripts\activate
+python main.py
 ```
+
+### One-command launcher
+
+Typing the activate/cd/run sequence every boot gets old fast. Create a `run.bat`
+next to `main.py` (it's gitignored, so it's safe to hardcode your local paths
+in it — it never gets committed):
+
+```bat
+@echo off
+cd /d "%~dp0"
+call path\to\venv\Scripts\activate.bat
+python main.py
+```
+
+Then just double-click `run.bat`, or run it from any terminal. `%~dp0` resolves
+to this script's own folder, so it always `cd`s to the right place regardless
+of where you launched it from.
 
 ### Commands
 
@@ -64,7 +80,8 @@ While monitoring is active, you can type commands and press Enter:
 | Command | Effect |
 |---|---|
 | `p` or `pause` | Pause skip mode — songs will not be cached until resumed |
-| `r`, `resume`, or `start` | Resume skip mode and caching |
+| `resume`, `start`, or `r` (while paused) | Resume skip mode and caching |
+| `r` or `refresh` (while not paused) | Instantly re-seed the cache from Apple Music |
 | `chat` | Enter interactive AI chat mode to ask about your music history |
 
 ### Output example
@@ -73,7 +90,7 @@ Apple Music Unique Shuffle
   Cooldown : 21 day(s)
   Poll     : every 10s
   Refresh  : every 60 min
-  Commands: 'p'/'pause' to pause, 'r'/'resume'/'start' to resume, 'chat' for AI chat
+  Commands: 'p'/'pause' to pause, 'resume'/'start'/'r' (while paused) to resume, 'r'/'refresh' (while running) to re-seed now, 'chat' for AI chat
   Press Ctrl+C to stop.
 
 Seeding cache from Apple Music...
@@ -95,7 +112,7 @@ Press `Ctrl+C` to stop.
 Temporarily pause skip functionality to deliberately play recently heard songs. While paused:
 - Skipped songs are **not** cached
 - Normal skips still appear in logs (with `[⏸ PAUSED]` indicator)
-- Resume with `r`, `resume`, or `start`
+- Resume with `resume`, `start`, or `r`
 
 Example use case: You want to replay a song you heard in the last few days, but the automation would normally skip it. Type `p` or `pause`, play your song, then type `resume` when done.
 

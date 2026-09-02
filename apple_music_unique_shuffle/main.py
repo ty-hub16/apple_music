@@ -8,8 +8,8 @@ Usage:
 
 Commands:
     p/pause        - Pause skip mode (songs won't be cached)
-    resume/start   - Resume skip mode
-    r/refresh      - Instantly re-seed the cache from Apple Music
+    resume/start   - Resume skip mode (also: r, while paused)
+    r/refresh      - Instantly re-seed the cache from Apple Music (also: r, while not paused)
     chat           - Enter interactive chat about your music
     q/quit         - Exit
 
@@ -286,7 +286,7 @@ def main():
     print(f"  Cooldown : {cooldown_days} day(s)")
     print(f"  Poll     : every {interval}s")
     print(f"  Refresh  : every {refresh_interval / 60:.0f} min")
-    print("  Commands: 'p'/'pause' to pause, 'resume'/'start' to resume, 'r'/'refresh' to re-seed now, 'chat' for AI chat")
+    print("  Commands: 'p'/'pause' to pause, 'resume'/'start'/'r' (while paused) to resume, 'r'/'refresh' (while running) to re-seed now, 'chat' for AI chat")
     print("  Press Ctrl+C to stop.\n")
 
     # Setup input listener thread
@@ -315,7 +315,7 @@ def main():
                     pause_mode = True
                     print(f"\n{_get_status_prefix(pause_mode)}⏸ PAUSE MODE ON — songs will not be cached")
                     print(f"{_get_status_prefix(pause_mode)}(type 'resume' or 'start' to resume)\n")
-                elif cmd in ["resume", "start"]:
+                elif cmd in ["resume", "start"] or (cmd == "r" and pause_mode):
                     pause_mode = False
                     print(f"\n▶ PAUSE MODE OFF — resuming cache\n")
                 elif cmd in ["r", "refresh"]:
