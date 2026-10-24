@@ -9,16 +9,19 @@ A Windows script that skips songs you've already played recently while shuffling
 
 ## How it works
 
-1. On startup, opens Apple Music, navigates to the **Songs** tab, and reads the most recently played songs via Windows UI Automation — seeding a local `last_played_cache.csv` as a starting point.
+1. On startup, loads your play history from a local **PostgreSQL** database, then opens Apple Music, navigates to the **Songs** tab, and reads the most recently played songs via Windows UI Automation to fill in anything new.
 2. Every 10 seconds, reads the currently playing song from the Apple Music transport bar.
-3. If that song was played within the last `cooldown_days` days, it sends a **Next Track** media key to skip it automatically. Otherwise it logs the play to the CSV.
-4. Every hour it re-reads Last Played dates from the Apple Music UI and merges any newer dates into the CSV — catching plays from your other devices.
+3. If that song was played within the last `cooldown_days` days, it sends a **Next Track** media key to skip it automatically. Otherwise it records the play in the database.
+4. Every few hours it re-reads Last Played dates from the Apple Music UI and merges any newer dates into the database — catching plays from your other devices.
+
+Plays are never deleted from the database, so it doubles as your full listening history. The cooldown only looks at the last `cooldown_days` days.
 
 ## Requirements
 
 - Windows 10/11
 - Apple Music (Microsoft Store app)
 - Python 3.10+
+- PostgreSQL (tested with 18) — [download](https://www.postgresql.org/download/windows/)
 
 ## Setup
 
@@ -27,6 +30,46 @@ cd apple_music_unique_shuffle
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### Database
+
+Create the database and table once, in `psql` (or pgAdmin's Query Tool):
+
+```sql
+CREATE DATABASE apple_music;
+\c apple_music
+
+CREATE TABLE last_played (
+    title       text NOT NULL,          -- stored lowercase
+    artist      text NOT NULL DEFAULT '',
+    album       text,                   -- NULL when unknown
+    last_played date NOT NULL,
+    PRIMARY KEY (title, artist)
+);
+```
+
+Then copy `.env.example` to `.env` and fill in your Postgres password. `.env` is gitignored.
+
+```
+PGHOST=localhost
+PGPORT=5432
+PGDATABASE=apple_music
+PGUSER=postgres
+PGPASSWORD=your_password
+```
+
+Apple Music shows artists as `Artist — Album`; the script splits that into the `artist` and `album` columns when saving. Writes are upserts that only ever move a song's date forward and never erase a known album.
+
+**Upgrading from the CSV version?** Import your old `last_played_cache.csv` once (run inside `psql` with `\c apple_music`), then split out albums:
+
+```sql
+SET datestyle = 'ISO, MDY';
+\copy last_played (title, artist, last_played) FROM 'last_played_cache.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')
+
+UPDATE last_played
+SET album  = substring(artist from (' ' || chr(8212) || ' (.*)$')),
+    artist = split_part(artist, ' ' || chr(8212) || ' ', 1);
 ```
 
 ## Configuration
@@ -141,6 +184,6 @@ Exit chat mode by typing `exit`, `q`, or `quit`.
 ## Notes
 
 - Apple Music must be running (it will be un-minimized briefly on startup and each hourly refresh, then minimized again)
-- Play history is saved to `last_played_cache.csv` (local only, not committed to git) so it persists across restarts
+- Play history is saved to the `apple_music` Postgres database (local only) so it persists across restarts. Query it directly, e.g. `SELECT * FROM last_played ORDER BY last_played DESC LIMIT 20;`
 - The hourly UI refresh catches plays from your iPhone/iPad — Last Played syncs across Apple devices, but can take up to an hour
 - The Songs tab must be visible in the sidebar; if it isn't, expand **Library** in the sidebar
