@@ -32,7 +32,6 @@ from src import cache
 from src.cache import _make_key
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-CACHE_PATH = os.path.join(os.path.dirname(__file__), "last_played_cache.csv")
 
 
 def load_config() -> dict:
@@ -245,7 +244,7 @@ def _refresh_and_merge(songs_data: dict, cooldown_days: int) -> tuple[dict, int]
             songs_data[key] = {"last_played": dt, "artist": ui_artist}
             merged += 1
     songs_data = cache.prune(songs_data, cooldown_days)
-    cache.save(CACHE_PATH, songs_data)
+    cache.save(songs_data)
     return songs_data, merged
 
 
@@ -296,7 +295,7 @@ def main():
     input_thread.start()
 
     print("Seeding cache from Apple Music...")
-    songs_data = cache.load(CACHE_PATH)
+    songs_data = cache.load()
     songs_data, seeded = _refresh_and_merge(songs_data, cooldown_days)
     print(f"  {len(songs_data)} songs in cooldown window ({seeded} seeded from UI).")
     print("  Done. Monitoring started.\n")
@@ -374,7 +373,7 @@ def main():
                     print(f"  PLAY  {title}  — {artist}")
                     cache.update(songs_data, title, artist)
                     songs_data = cache.prune(songs_data, cooldown_days)
-                    cache.save(CACHE_PATH, songs_data)
+                    cache.save(songs_data)
                 last_track = track
 
             time.sleep(interval)
